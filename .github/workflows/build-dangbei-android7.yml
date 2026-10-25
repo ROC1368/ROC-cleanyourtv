@@ -44,8 +44,27 @@ jobs:
           old = 'prefs.edit().putInt("live_tv_boot", boot).apply();'
           new = 'if (!prefs.edit().putInt("live_tv_boot", boot).commit()) return false;'
           assert source.count(old) == 1, "Unexpected boot marker implementation"
-          main.write_text(source.replace(old, new, 1), encoding="utf-8")
-          print("Patched minSdk=25, Java core library desugaring and one-time boot launch.")
+          source = source.replace(old, new, 1)
+
+          # PackageManager.getChangedPackages was introduced in Android 8.0
+          # (API 26). Android 7.x relies on existing package broadcasts.
+          old = """    private boolean packagesChangedSinceRebuild() {
+        ChangedPackages changed = getPackageManager().getChangedPackages(packageSequence);"""
+          new = """    private boolean packagesChangedSinceRebuild() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false;
+        ChangedPackages changed = getPackageManager().getChangedPackages(packageSequence);"""
+          assert source.count(old) == 1, "Unexpected changed-package check"
+          source = source.replace(old, new, 1)
+
+          old = """    private int currentPackageSequence(int since) {
+        ChangedPackages changed = getPackageManager().getChangedPackages(since);"""
+          new = """    private int currentPackageSequence(int since) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return since;
+        ChangedPackages changed = getPackageManager().getChangedPackages(since);"""
+          assert source.count(old) == 1, "Unexpected package-sequence check"
+          source = source.replace(old, new, 1)
+          main.write_text(source, encoding="utf-8")
+          print("Patched Android 7 compatibility: API 26 getChangedPackages guarded.")
           PY
 
       - name: Set up Java 17
@@ -80,7 +99,7 @@ jobs:
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: CleanYourTV-v2.7-Dangbei-Android7-experimental
+          name: CleanYourTV-v2.7-Dangbei-Android7-API26fix
           path: launcher/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
