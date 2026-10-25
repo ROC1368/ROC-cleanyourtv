@@ -57,6 +57,13 @@ jobs:
           new = '    private int currentPackageSequence(int since) {\n        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return since;\n        ChangedPackages changed = getPackageManager().getChangedPackages(since);'
           assert source.count(old) == 1, "Unexpected package-sequence check"
           source = source.replace(old, new, 1)
+          # On some Android 7 TV boxes, TvInputManager exists but its
+          # underlying ITvInputManager binder is absent. Skip this optional
+          # TV input service on API 25 to avoid getTvInputList crashes.
+          old = 'TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);'
+          new = 'TvInputManager tim = Build.VERSION.SDK_INT < Build.VERSION_CODES.O ? null : (TvInputManager) getSystemService(TV_INPUT_SERVICE);'
+          assert source.count(old) == 5, "Unexpected TvInputManager call sites"
+          source = source.replace(old, new)
           main.write_text(source, encoding="utf-8")
           print("Patched Android 7 compatibility: API 26 getChangedPackages guarded.")
           PY
@@ -93,7 +100,7 @@ jobs:
       - name: Upload experimental APK
         uses: actions/upload-artifact@v4
         with:
-          name: CleanYourTV-v2.7-Dangbei-Android7-API26fix
+          name: CleanYourTV-v2.7-Dangbei-Android7-tvinput-fix
           path: launcher/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 14
